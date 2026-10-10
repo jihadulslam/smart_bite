@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'login_page.dart';
 
 class SignUpPage extends StatefulWidget {
@@ -11,14 +12,14 @@ class SignUpPage extends StatefulWidget {
 
 class _SignUpPageState extends State<SignUpPage> {
   // Text controllers for inputs
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
 
   // Variables for password visibility and checkbox
   bool _isObscure = true;
   bool _isAgreed = false;
-
+  
   // Custom brand color extracted from Figma (Maroon/Dark Red)
   final Color _primaryColor = const Color(0xFF7A232E);
 
@@ -28,6 +29,64 @@ class _SignUpPageState extends State<SignUpPage> {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  // Function to handle Sign Up with Firebase Auth & Firestore
+  Future<void> _signUpUser() async {
+    // Check if terms are agreed
+    if (!_isAgreed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please agree to the Terms & Privacy Policy')),
+      );
+      return;
+    }
+
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      // 1. Create user with Firebase Authentication
+      UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      // Get the unique user ID
+      String uid = userCredential.user!.uid;
+
+      // 2. Save user profile info to Firestore 'users' collection
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'uid': uid,
+        'fullName': _nameController.text.trim(),
+        'email': _emailController.text.trim(),
+        'createdAt': Timestamp.now(),
+      });
+
+      // Close loading dialog
+      Navigator.pop(context);
+
+      // Show success message and navigate to Login Page
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Account created successfully! Please log in.')),
+      );
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+      );
+
+    } on FirebaseAuthException catch (e) {
+      Navigator.pop(context); // Close loading dialog
+      
+      // Show error message from Firebase
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'An error occurred during sign up')),
+      );
+    }
   }
 
   @override
@@ -40,7 +99,7 @@ class _SignUpPageState extends State<SignUpPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Brand Header (Icon + SmartBite Text like Figma)
+              // Brand Header (Icon + SmartBite Text)
               Row(
                 children: [
                   Icon(Icons.soup_kitchen, color: _primaryColor, size: 32),
@@ -61,9 +120,9 @@ class _SignUpPageState extends State<SignUpPage> {
               const Text(
                 'A kitchen of your own.',
                 style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87
+                  fontSize: 28, 
+                  fontWeight: FontWeight.bold, 
+                  color: Colors.black87
                 ),
               ),
               const SizedBox(height: 8),
@@ -75,8 +134,8 @@ class _SignUpPageState extends State<SignUpPage> {
 
               // Full Name Field Label
               const Text(
-                  'Full name',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)
+                'Full name', 
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)
               ),
               const SizedBox(height: 8),
               // Full Name Text Field
@@ -105,8 +164,8 @@ class _SignUpPageState extends State<SignUpPage> {
 
               // Email Field Label
               const Text(
-                  'Email address',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)
+                'Email address', 
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)
               ),
               const SizedBox(height: 8),
               // Email Text Field
@@ -135,8 +194,8 @@ class _SignUpPageState extends State<SignUpPage> {
 
               // Password Field Label
               const Text(
-                  'Password',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)
+                'Password', 
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)
               ),
               const SizedBox(height: 8),
               // Password Text Field
@@ -149,8 +208,8 @@ class _SignUpPageState extends State<SignUpPage> {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   suffixIcon: IconButton(
                     icon: Icon(
-                        _isObscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                        color: _primaryColor
+                      _isObscure ? Icons.visibility_off_outlined : Icons.visibility_outlined, 
+                      color: _primaryColor
                     ),
                     onPressed: () {
                       setState(() {
@@ -173,7 +232,7 @@ class _SignUpPageState extends State<SignUpPage> {
                 ),
               ),
               const SizedBox(height: 8),
-
+              
               // Password Helper Text
               const Text(
                 'Use at least 8 characters, including a number.',
@@ -191,7 +250,7 @@ class _SignUpPageState extends State<SignUpPage> {
                       value: _isAgreed,
                       activeColor: _primaryColor,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4)
+                        borderRadius: BorderRadius.circular(4)
                       ),
                       onChanged: (value) {
                         setState(() {
@@ -220,57 +279,13 @@ class _SignUpPageState extends State<SignUpPage> {
                     backgroundColor: _primaryColor,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)
+                      borderRadius: BorderRadius.circular(12)
                     ),
                   ),
-                  onPressed: () async {
-                    // Check if terms are agreed
-                    if (!_isAgreed) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Please agree to the Terms & Privacy Policy')),
-                      );
-                      return;
-                    }
-
-                    try {
-                      // Show loading indicator
-                      showDialog(
-                        context: context,
-                        barrierDismissible: false,
-                        builder: (context) => const Center(child: CircularProgressIndicator()),
-                      );
-
-                      // Create user with Firebase Authentication
-                      UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-                        email: _emailController.text.trim(),
-                        password: _passwordController.text.trim(),
-                      );
-
-                      // Close loading dialog
-                      Navigator.pop(context);
-
-                      // If successful, navigate to Login Page or Home Page
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Account created successfully! Please log in.')),
-                      );
-
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (context) => const LoginPage()),
-                      );
-
-                    } on FirebaseAuthException catch (e) {
-                      Navigator.pop(context); // Close loading dialog
-
-                      // Show error message from Firebase
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(e.message ?? 'An error occurred')),
-                      );
-                    }
-                  },
+                  onPressed: _signUpUser, // Calls the registration function
                   child: const Text(
-                      'Create account',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
+                    'Create account', 
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
                   ),
                 ),
               ),
@@ -298,21 +313,21 @@ class _SignUpPageState extends State<SignUpPage> {
                     backgroundColor: Colors.white,
                     side: BorderSide(color: Colors.grey.shade300),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)
+                      borderRadius: BorderRadius.circular(12)
                     ),
                   ),
                   icon: const Icon(Icons.g_mobiledata, color: Colors.red, size: 36),
                   label: const Text(
-                      'Continue with Google',
-                      style: TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.bold)
+                    'Continue with Google', 
+                    style: TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.bold)
                   ),
                   onPressed: () {
                     // TODO: Implement Google Sign-In logic
                   },
                 ),
               ),
-
-              // Helper text to go back to Login (Added for better UX)
+              
+              // Helper text to go back to Login
               const SizedBox(height: 30),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -323,7 +338,6 @@ class _SignUpPageState extends State<SignUpPage> {
                   ),
                   TextButton(
                     onPressed: () {
-                      // Navigate back to Login Page
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(builder: (context) => const LoginPage()),
