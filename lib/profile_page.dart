@@ -6,6 +6,9 @@ import 'explore_page.dart';
 import 'grocery_page.dart';
 import 'saved_page.dart';
 import 'login_page.dart';
+import 'admin_dashboard.dart';
+import 'add_recipe_page.dart';
+import 'settings_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -97,8 +100,9 @@ class _ProfilePageState extends State<ProfilePage> {
           IconButton(
             icon: const Icon(Icons.settings_outlined, color: Colors.white, size: 26),
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Settings clicked!')),
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsPage()),
               );
             },
           ),
@@ -154,7 +158,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 20),
             const Text(
-              'Welcome to My Kitchen',
+              'Welcome to SmartBite',
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
             ),
             const SizedBox(height: 8),
@@ -456,6 +460,38 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             child: Column(
               children: [
+                // Admin access only
+                if (FirebaseAuth.instance.currentUser?.email == 'admin1@gmail.com') ...[
+                  _buildOptionTile(
+                    icon: Icons.admin_panel_settings_outlined,
+                    title: 'Admin Dashboard',
+                    trailingText: 'Admin',
+                    iconColor: _primaryColor,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const AdminDashboard()),
+                      );
+                    },
+                  ),
+                  Divider(height: 1, color: Colors.grey.shade100),
+                ],
+                
+                // Add Recipe Option for everyone
+                _buildOptionTile(
+                  icon: Icons.add_circle_outline,
+                  title: 'Submit a Recipe',
+                  trailingText: '',
+                  iconColor: _primaryColor,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const AddRecipePage()),
+                    );
+                  },
+                ),
+                Divider(height: 1, color: Colors.grey.shade100),
+
                 _buildOptionTile(
                   icon: Icons.notifications_none,
                   title: 'Notifications',
