@@ -8,6 +8,7 @@ import 'grocery_page.dart';
 import 'saved_page.dart';
 import 'profile_page.dart';
 import 'login_page.dart';
+import 'app_language.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -72,6 +73,305 @@ class _HomePageState extends State<HomePage> {
         });
       }
     }
+  }
+
+  List<String> _getMatchedTags(
+    Map<String, dynamic> recipe,
+    List<String> userTags,
+    List<String> dailyRoutines,
+  ) {
+    final List<String> matched = [];
+
+    // রেসিপির ট্যাগ, ক্যাটাগরি ও টাইটেল একসাথে ছোট হাতের অক্ষরে নেওয়া
+    final List<String> recipeTags = recipe['tags'] is List
+        ? List<String>.from(recipe['tags']).map((e) => e.toLowerCase()).toList()
+        : [];
+    final String searchableText = [
+      recipe['title']?.toString() ?? '',
+      recipe['category']?.toString() ?? '',
+      recipe['description']?.toString() ?? '',
+      ...recipeTags,
+    ].join(' ').toLowerCase();
+
+    for (final tag in userTags) {
+      final lowerTag = tag.toLowerCase();
+      // সরাসরি ট্যাগ বা কীওয়ার্ড মিললে লিস্টে যোগ করবে
+      if (recipeTags.contains(lowerTag) || searchableText.contains(lowerTag)) {
+        matched.add(tag);
+      } else if (lowerTag == 'fish & chicken' &&
+          (searchableText.contains('fish') || searchableText.contains('chicken'))) {
+        matched.add(tag);
+      } else if (lowerTag == 'diabetic friendly' &&
+          searchableText.contains('diabetic')) {
+        matched.add(tag);
+      }
+    }
+
+    // ইউজারের রুটিনে 'Cook in 30 min' থাকলে ৩০ মিনিট বা তার কম সময়ের রেসিপি ম্যাচ করবে
+    if (dailyRoutines.contains('Cook in 30 min')) {
+      final timeStr = recipe['time']?.toString() ?? '';
+      final minutesMatch = RegExp(r'\d+').firstMatch(timeStr);
+      if (minutesMatch != null) {
+        final int minutes = int.tryParse(minutesMatch.group(0)!) ?? 99;
+        if (minutes <= 30) {
+          matched.add('Under 30 min');
+        }
+      }
+    }
+
+    return matched;
+  }
+
+  Widget _buildRecommendedSection() {
+    final User? currentUser = FirebaseAuth.instance.currentUser;
+
+    // ইউজার লগইন না থাকলে সরাসরি সাধারণ রেসিপি দেখাবে
+    if (currentUser == null) {
+      return _buildRecipesList(
+        healthConditions: const [],
+        foodPreferences: const [],
+        dailyRoutines: const [],
+        isLoggedIn: false,
+      );
+    }
+
+    // ইউজার লগইন থাকলে তার Made for you ডেটা লাইভ পড়বে
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .snapshots(),
+      builder: (context, userSnapshot) {
+        List<String> healthConditions = [];
+        List<String> foodPreferences = [];
+        List<String> dailyRoutines = [];
+
+        if (userSnapshot.hasData && userSnapshot.data!.exists) {
+          final userData = userSnapshot.data!.data() as Map<String, dynamic>?;
+          if (userData?['healthConditions'] is List) {
+            healthConditions = List<String>.from(userData!['healthConditions']);
+          }
+          if (userData?['foodPreferences'] is List) {
+            foodPreferences = List<String>.from(userData!['foodPreferences']);
+          }
+          if (userData?['dailyRoutines'] is List) {
+            dailyRoutines = List<String>.from(userData!['dailyRoutines']);
+          }
+        }
+
+        return _buildRecipesList(
+          healthConditions: healthConditions,
+          foodPreferences: foodPreferences,
+          dailyRoutines: dailyRoutines,
+          isLoggedIn: true,
+        );
+      },
+    );
+  }
+
+  Widget _buildRecipesList({
+    required List<String> healthConditions,
+    required List<String> foodPreferences,
+    required List<String> dailyRoutines,
+    required bool isLoggedIn,
+  }) {
+    final List<String> allUserTags = [...healthConditions, ...foodPreferences];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                isLoggedIn && allUserTags.isNotEmpty
+                    ? AppLang.t('recommended')
+                    : AppLang.t('popular_recipes'),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              if (healthConditions.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEAF5EC),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    healthConditions.first,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF2E7D32),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 235,
+          child: StreamBuilder<QuerySnapshot>(
+            // আপনার Firestore কালেকশনের নাম আলাদা হলে 'recipes' পরিবর্তন করবেন
+            stream: FirebaseFirestore.instance.collection('recipes').snapshots(),
+            builder: (context, recipeSnapshot) {
+              if (recipeSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(color: Color(0xFF7A232E)),
+                );
+              }
+
+              if (!recipeSnapshot.hasData || recipeSnapshot.data!.docs.isEmpty) {
+                return const Center(child: Text('No recipes available yet.'));
+              }
+
+              // প্রতিটি রেসিপির সাথে কতগুলো ট্যাগ মিলছে তা হিসাব করা
+              final List<Map<String, dynamic>> scoredRecipes =
+                  recipeSnapshot.data!.docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final matched = _getMatchedTags(data, allUserTags, dailyRoutines);
+                return {
+                  'id': doc.id,
+                  'data': data,
+                  'matchedTags': matched,
+                  'score': matched.length,
+                };
+              }).toList();
+
+              // যেগুলোর ম্যাচিং স্কোর বেশি সেগুলো সবার আগে দেখাবে
+              scoredRecipes.sort(
+                (a, b) => (b['score'] as int).compareTo(a['score'] as int),
+              );
+
+              return ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: scoredRecipes.length,
+                itemBuilder: (context, index) {
+                  final item = scoredRecipes[index];
+                  final data = item['data'] as Map<String, dynamic>;
+                  final matchedTags = item['matchedTags'] as List<String>;
+
+                  final String title = data['title'] ?? 'Untitled Recipe';
+                  final String time = data['time'] ?? '30 min';
+                  final String imageUrl = data['imageUrl'] ?? data['image'] ?? '';
+
+                  return GestureDetector(
+                    onTap: () {
+                      // এখানে আপনার RecipeDetailPage-এ পাঠাবেন
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const RecipeDetailPage()));
+                    },
+                    child: Container(
+                      width: 180,
+                      margin: const EdgeInsets.only(right: 14, bottom: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ClipRRect(
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(16),
+                            ),
+                            child: imageUrl.isNotEmpty
+                                ? Image.network(
+                                    imageUrl,
+                                    height: 115,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      height: 115,
+                                      color: const Color(0xFFF3EAEB),
+                                      child: const Icon(
+                                        Icons.restaurant,
+                                        color: Color(0xFF7A232E),
+                                      ),
+                                    ),
+                                  )
+                                : Container(
+                                    height: 115,
+                                    width: double.infinity,
+                                    color: const Color(0xFFF3EAEB),
+                                    child: const Icon(
+                                      Icons.restaurant,
+                                      color: Color(0xFF7A232E),
+                                    ),
+                                  ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(10.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  time,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                if (matchedTags.isNotEmpty)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEAF5EC),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      '✓ ${matchedTags.first}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF2E7D32),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -205,47 +505,9 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(height: 24),
 
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Popular recipes',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {},
-                          child: Text(
-                            'See all',
-                            style: TextStyle(
-                              color: _primaryColor,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 24),
 
-                    _buildRecipeCard(
-                      title: 'Sylheti lemon chicken',
-                      tag: 'Sylhet',
-                      time: '30 min',
-                      calories: '285 kcal / serving',
-                      imageUrl: 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?w=500',
-                    ),
-                    const SizedBox(height: 16),
-
-                    _buildRecipeCard(
-                      title: 'Vegetable bhuna khichuri',
-                      tag: 'Dhaka',
-                      time: '35 min',
-                      calories: '320 kcal / serving',
-                      imageUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500',
-                    ),
+                    _buildRecommendedSection(),
                     const SizedBox(height: 20),
                   ],
                 ),

@@ -17,7 +17,7 @@ class AdminDashboard extends StatelessWidget {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const ProfilePage()),
-            (route) => false,
+        (route) => false,
       );
     }
   }
@@ -25,115 +25,115 @@ class AdminDashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, result) {
-          if (!didPop) {
-            _exitAdminPanel(context);
-          }
-        },
-        child: Scaffold(
-          backgroundColor: _bgColor,
-          appBar: AppBar(
-            backgroundColor: _primaryColor,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          _exitAdminPanel(context);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: _bgColor,
+        appBar: AppBar(
+          backgroundColor: _primaryColor,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => _exitAdminPanel(context),
+          ),
+          title: const Text(
+            'Admin Dashboard',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          iconTheme: const IconThemeData(color: Colors.white),
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout, color: Colors.white),
+              tooltip: 'Log out',
               onPressed: () => _exitAdminPanel(context),
             ),
-            title: const Text(
-              'Admin Dashboard',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ],
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Welcome, Admin',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
             ),
-            iconTheme: const IconThemeData(color: Colors.white),
-            elevation: 0,
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.logout, color: Colors.white),
-                tooltip: 'Log out',
-                onPressed: () => _exitAdminPanel(context),
-              ),
-            ],
-          ),
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(height: 4),
+            const Text(
+              'Live overview of SmartBite.',
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+            const SizedBox(height: 24),
+
+            // Live Analytics Row 1: Total Users & Pending Recipes
+            Row(
               children: [
-                const Text(
-                  'Welcome, Admin',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
+                _buildLiveStatCard(
+                  title: 'Total Users',
+                  icon: Icons.people,
+                  color: Colors.blue,
+                  stream: FirebaseFirestore.instance.collection('users').snapshots(),
                 ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Live overview of SmartBite.',
-                  style: TextStyle(fontSize: 14, color: Colors.grey),
-                ),
-                const SizedBox(height: 24),
-
-                // Live Analytics Row 1: Total Users & Pending Recipes
-                Row(
-                  children: [
-                    _buildLiveStatCard(
-                      title: 'Total Users',
-                      icon: Icons.people,
-                      color: Colors.blue,
-                      stream: FirebaseFirestore.instance.collection('users').snapshots(),
-                    ),
-                    const SizedBox(width: 16),
-                    _buildLiveStatCard(
-                      title: 'Pending',
-                      icon: Icons.pending_actions,
-                      color: Colors.orange,
-                      stream: FirebaseFirestore.instance
-                          .collection('recipes')
-                          .where('status', isEqualTo: 'pending')
-                          .snapshots(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // Live Analytics Row 2: Approved Recipes & Active Categories
-                Row(
-                  children: [
-                    _buildLiveStatCard(
-                      title: 'Approved',
-                      icon: Icons.check_circle,
-                      color: Colors.green,
-                      stream: FirebaseFirestore.instance
-                          .collection('recipes')
-                          .where('status', isEqualTo: 'approved')
-                          .snapshots(),
-                    ),
-                    const SizedBox(width: 16),
-                    _buildUniqueCategoriesCard(),
-                  ],
-                ),
-                const SizedBox(height: 32),
-
-                const Text(
-                  'Management Tools',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
-                ),
-                const SizedBox(height: 16),
-
-                // Action Grid
-                GridView.count(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: [
-                    _buildActionCard(context, 'Pending Recipes', 'Review user posts', Icons.rule_folder, Colors.orange.shade700),
-                    _buildActionCard(context, 'User Activity', 'Track & manage users', Icons.manage_accounts, Colors.blue.shade700),
-                    _buildActionCard(context, 'Manage Recipes', 'Edit or delete recipes', Icons.edit_document, Colors.green.shade700),
-                    _buildActionCard(context, 'Manage Tags', 'Districts & Health tags', Icons.local_offer, Colors.purple.shade700),
-                  ],
+                const SizedBox(width: 16),
+                _buildLiveStatCard(
+                  title: 'Pending',
+                  icon: Icons.pending_actions,
+                  color: Colors.orange,
+                  stream: FirebaseFirestore.instance
+                      .collection('recipes')
+                      .where('status', isEqualTo: 'pending')
+                      .snapshots(),
                 ),
               ],
             ),
-          ),
-        ));
+            const SizedBox(height: 16),
+
+            // Live Analytics Row 2: Approved Recipes & Active Categories
+            Row(
+              children: [
+                _buildLiveStatCard(
+                  title: 'Approved',
+                  icon: Icons.check_circle,
+                  color: Colors.green,
+                  stream: FirebaseFirestore.instance
+                      .collection('recipes')
+                      .where('status', isEqualTo: 'approved')
+                      .snapshots(),
+                ),
+                const SizedBox(width: 16),
+                _buildUniqueCategoriesCard(),
+              ],
+            ),
+            const SizedBox(height: 32),
+
+            const Text(
+              'Management Tools',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+            ),
+            const SizedBox(height: 16),
+
+            // Action Grid
+            GridView.count(
+              crossAxisCount: 2,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                _buildActionCard(context, 'Pending Recipes', 'Review user posts', Icons.rule_folder, Colors.orange.shade700),
+                _buildActionCard(context, 'User Activity', 'Track & manage users', Icons.manage_accounts, Colors.blue.shade700),
+                _buildActionCard(context, 'Manage Recipes', 'Edit or delete recipes', Icons.edit_document, Colors.green.shade700),
+                _buildActionCard(context, 'Manage Tags', 'Districts & Health tags', Icons.local_offer, Colors.purple.shade700),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ));
   }
 
   // Firebase StreamBuilder দিয়ে আসল কাউন্ট দেখানোর কার্ড

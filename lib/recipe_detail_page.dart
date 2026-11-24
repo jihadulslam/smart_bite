@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'cooking_mode_page.dart';
 import 'nutrition_page.dart';
 
@@ -12,6 +14,56 @@ class RecipeDetailPage extends StatefulWidget {
 class _RecipeDetailPageState extends State<RecipeDetailPage> {
   final Color _primaryColor = const Color(0xFF7A232E);
   bool isBookmarked = true;
+
+  Future<void> _toggleSaveRecipe({
+    required String recipeId,
+    required String title,
+    required String time,
+    required String region,
+    required String imageUrl,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to save recipes.')),
+      );
+      return;
+    }
+
+    final docRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('saved_recipes')
+        .doc(recipeId);
+
+    final doc = await docRef.get();
+
+    if (doc.exists) {
+      await docRef.delete();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Removed from saved recipes')),
+        );
+      }
+    } else {
+      await docRef.set({
+        'recipeId': recipeId,
+        'title': title,
+        'time': time,
+        'region': region,
+        'imageUrl': imageUrl,
+        'savedAt': FieldValue.serverTimestamp(),
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Recipe saved!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    }
+  }
 
   // Ingredients Data
   final List<Map<String, String>> ingredients = [
@@ -71,8 +123,15 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                             setState(() {
                               isBookmarked = !isBookmarked;
                             });
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Recipe bookmark clicked!')),
+                            // Call the save logic here
+                            // Assume we receive these details through constructor normally.
+                            // For now, using placeholders to demonstrate.
+                            _toggleSaveRecipe(
+                              recipeId: 'demo_recipe_id',
+                              title: 'Sylheti Lemon Chicken',
+                              time: '30 min',
+                              region: 'Sylhet',
+                              imageUrl: 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?w=500',
                             );
                           },
                           child: CircleAvatar(
