@@ -1,6 +1,9 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
 import 'home_page.dart';
 import 'explore_page.dart';
 import 'grocery_page.dart';
@@ -9,6 +12,11 @@ import 'login_page.dart';
 import 'admin_dashboard.dart';
 import 'add_recipe_page.dart';
 import 'settings_page.dart';
+import 'edit_profile_page.dart';
+import 'preferences_page.dart';
+import 'notification_service.dart';
+import 'app_language.dart';
+import 'help_support_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -22,75 +30,307 @@ class _ProfilePageState extends State<ProfilePage> {
   final Color _bgColor = const Color(0xFFFAF9F9);
   final int _currentIndex = 4;
 
-  String userName = "md jihadul islam limon";
-  String userLocation = "Dhaka, Bangladesh";
-  String? profilePicUrl;
-  bool isLoading = true;
+  final String userLocation = "Dhaka, Bangladesh";
+  final ImagePicker _picker = ImagePicker();
+  bool _isUploadingPhoto = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _fetchUserData();
+  void _showImagePickerOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(Icons.photo_library, color: _primaryColor),
+                title: const Text('Choose from Gallery'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickAndSaveProfilePic(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.camera_alt, color: _primaryColor),
+                title: const Text('Take a Photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickAndSaveProfilePic(ImageSource.camera);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
-  Future<void> _fetchUserData() async {
-    setState(() {
-      isLoading = true;
-    });
-    try {
-      User? currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser != null) {
-        DocumentSnapshot userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(currentUser.uid)
-            .get();
+  void _showLanguageSheet(User user) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  height: 4,
+                  width: 40,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Text(
+                  AppLang.t('language'),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                _buildLanguageOption('English', user, sheetContext),
+                _buildLanguageOption('বাংলা', user, sheetContext),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
-        if (userDoc.exists && mounted) {
-          final data = userDoc.data() as Map<String, dynamic>?;
-          setState(() {
-            userName = data?['fullName'] ??
-                currentUser.displayName ??
-                (currentUser.email != null ? currentUser.email!.split('@')[0] : "md jihadul islam limon");
-            profilePicUrl = data?['profilePic'] ?? currentUser.photoURL;
-            isLoading = false;
-          });
-        } else if (mounted) {
-          setState(() {
-            userName = currentUser.displayName ??
-                (currentUser.email != null ? currentUser.email!.split('@')[0] : "md jihadul islam limon");
-            profilePicUrl = currentUser.photoURL;
-            isLoading = false;
-          });
-        }
-      } else {
+  Widget _buildLanguageOption(String langName, User user, BuildContext sheetContext) {
+    final bool isSelected = AppLang.current.value == langName;
+
+    return ListTile(
+      onTap: () async {
+        AppLang.setLanguage(langName);
+        Navigator.pop(sheetContext);
+
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'language': langName,
+        }, SetOptions(merge: true));
+      },
+      leading: Icon(
+        Icons.language,
+        color: isSelected ? _primaryColor : Colors.grey,
+      ),
+      title: Text(
+        langName,
+        style: TextStyle(
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          color: isSelected ? _primaryColor : Colors.black87,
+        ),
+      ),
+      trailing: isSelected
+          ? Icon(Icons.check_circle, color: _primaryColor)
+          : null,
+    );
+  }
+
+  void _showNotificationSheet(User user, bool initialEnabled) {
+    bool isEnabled = initialEnabled;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Notification Settings',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      activeThumbColor: _primaryColor,
+                      title: const Text(
+                        'Daily Meal & Recipe Alerts',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: const Text(
+                        'Get personalized recipe reminders on your phone',
+                      ),
+                      value: isEnabled,
+                      onChanged: (value) async {
+                        if (value) {
+                          final granted =
+                              await NotificationService.requestPermission();
+                          if (!granted) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Notification permission denied from phone settings.',
+                                  ),
+                                  backgroundColor: Colors.orange,
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                          await NotificationService.scheduleDailyReminder();
+                          await NotificationService.showNotification(
+                            title: 'SmartBite Notifications On 🔔',
+                            body: 'You will now receive daily recipe suggestions!',
+                          );
+                        } else {
+                          await NotificationService.cancelAll();
+                        }
+
+                        setSheetState(() => isEnabled = value);
+
+                        await FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(user.uid)
+                            .set({
+                          'notificationsEnabled': value,
+                          'updatedAt': FieldValue.serverTimestamp(),
+                        }, SetOptions(merge: true));
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 46,
+                      child: OutlinedButton.icon(
+                        icon: Icon(Icons.notifications_active, color: _primaryColor),
+                        label: Text(
+                          'Send Test Notification',
+                          style: TextStyle(
+                            color: _primaryColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: _primaryColor),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: !isEnabled
+                            ? null
+                            : () async {
+                                await NotificationService.requestPermission();
+                                await NotificationService.showNotification(
+                                  id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+                                  title: 'SmartBite Recipe Alert 🍛',
+                                  body: 'New healthy recipes matching your preferences are waiting!',
+                                );
+                              },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _pickAndSaveProfilePic(ImageSource source) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: source,
+        imageQuality: 40,
+        maxWidth: 300,
+        maxHeight: 300,
+      );
+
+      if (pickedFile == null) return;
+
+      setState(() => _isUploadingPhoto = true);
+
+      final Uint8List imageBytes = await pickedFile.readAsBytes();
+
+      if (imageBytes.lengthInBytes > 500 * 1024) {
         if (mounted) {
-          setState(() {
-            isLoading = false;
-          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('ছবির সাইজ বেশি বড়, অনুগ্রহ করে অন্য ছবি দিন।'),
+              backgroundColor: Colors.orange,
+            ),
+          );
         }
+        return;
+      }
+
+      final String base64Image = base64Encode(imageBytes);
+
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'profilePicBase64': base64Image,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile picture updated!'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          isLoading = false;
-        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving photo: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
+    } finally {
+      if (mounted) setState(() => _isUploadingPhoto = false);
     }
+  }
+
+  ImageProvider? _getProfileImage(String? base64String, String? url) {
+    if (base64String != null && base64String.isNotEmpty) {
+      try {
+        return MemoryImage(base64Decode(base64String));
+      } catch (_) {}
+    }
+    if (url != null && url.isNotEmpty && url.startsWith('http')) {
+      return NetworkImage(url);
+    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
-    User? currentUser = FirebaseAuth.instance.currentUser;
-
     return Scaffold(
       backgroundColor: _bgColor,
       appBar: AppBar(
         backgroundColor: _primaryColor,
         elevation: 0,
         automaticallyImplyLeading: false,
-        title: const Text(
-          'My kitchen',
-          style: TextStyle(
+        title: Text(
+          AppLang.t('my_kitchen'),
+          style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
             fontSize: 22,
@@ -109,11 +349,22 @@ class _ProfilePageState extends State<ProfilePage> {
           const SizedBox(width: 8),
         ],
       ),
-      body: isLoading
-          ? Center(child: CircularProgressIndicator(color: _primaryColor))
-          : currentUser == null
-          ? _buildGuestView()
-          : _buildLoggedInView(),
+      body: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator(color: _primaryColor));
+          }
+
+          final User? user = snapshot.data;
+
+          if (user == null) {
+            return _buildGuestView();
+          }
+
+          return _buildLoggedInView(user);
+        },
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
@@ -133,12 +384,12 @@ class _ProfilePageState extends State<ProfilePage> {
         selectedFontSize: 12,
         unselectedFontSize: 12,
         backgroundColor: Colors.white,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.explore_outlined), activeIcon: Icon(Icons.explore), label: 'Explore'),
-          BottomNavigationBarItem(icon: Icon(Icons.shopping_basket_outlined), activeIcon: Icon(Icons.shopping_basket), label: 'Grocery'),
-          BottomNavigationBarItem(icon: Icon(Icons.bookmark_border), activeIcon: Icon(Icons.bookmark), label: 'Saved'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Profile'),
+        items: [
+          BottomNavigationBarItem(icon: const Icon(Icons.home_outlined), activeIcon: const Icon(Icons.home), label: AppLang.t('home')),
+          BottomNavigationBarItem(icon: const Icon(Icons.explore_outlined), activeIcon: const Icon(Icons.explore), label: AppLang.t('explore')),
+          BottomNavigationBarItem(icon: const Icon(Icons.shopping_basket_outlined), activeIcon: const Icon(Icons.shopping_basket), label: AppLang.t('grocery')),
+          BottomNavigationBarItem(icon: const Icon(Icons.bookmark_border), activeIcon: const Icon(Icons.bookmark), label: AppLang.t('saved')),
+          BottomNavigationBarItem(icon: const Icon(Icons.person_outline), activeIcon: const Icon(Icons.person), label: AppLang.t('profile')),
         ],
       ),
     );
@@ -180,10 +431,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => LoginPage()), // Removed 'const' here
-                  ).then((_) {
-                    _fetchUserData();
-                  });
+                    MaterialPageRoute(builder: (context) => const LoginPage()),
+                  );
                 },
                 child: const Text(
                   'Log In Now',
@@ -197,100 +446,122 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildLoggedInView() {
+  Widget _buildLoggedInView(User user) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(16.0),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .snapshots(),
+            builder: (context, snapshot) {
+              Map<String, dynamic>? data;
+              if (snapshot.hasData && snapshot.data!.exists) {
+                data = snapshot.data!.data() as Map<String, dynamic>?;
+              }
+
+              final String displayName = data?['fullName'] ??
+                  user.displayName ??
+                  (user.email != null ? user.email!.split('@')[0] : 'SmartBite User');
+
+              final ImageProvider? profileImage = _getProfileImage(
+                data?['profilePicBase64'],
+                data?['profilePic'] ?? user.photoURL,
+              );
+
+              return Container(
+                padding: const EdgeInsets.all(16.0),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Profile picture upload skipped (Backend task).')),
-                    );
-                  },
-                  child: Stack(
-                    alignment: Alignment.bottomRight,
-                    children: [
-                      CircleAvatar(
-                        radius: 38,
-                        backgroundColor: const Color(0xFFF3EAEB),
-                        backgroundImage: (profilePicUrl != null && profilePicUrl!.isNotEmpty)
-                            ? NetworkImage(profilePicUrl!)
-                            : null,
-                        child: (profilePicUrl == null || profilePicUrl!.isEmpty)
-                            ? const Text('👨🏻', style: TextStyle(fontSize: 40))
-                            : null,
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(5),
-                        decoration: BoxDecoration(
-                          color: _primaryColor,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                        child: const Icon(Icons.camera_alt, size: 12, color: Colors.white),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        userName,
-                        style: const TextStyle(
-                          fontSize: 19,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        userLocation,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      GestureDetector(
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Edit profile clicked!')),
-                          );
-                        },
-                        child: Text(
-                          'Edit profile',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: _primaryColor,
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: _isUploadingPhoto ? null : _showImagePickerOptions,
+                      child: Stack(
+                        alignment: Alignment.bottomRight,
+                        children: [
+                          CircleAvatar(
+                            radius: 38,
+                            backgroundColor: const Color(0xFFF3EAEB),
+                            backgroundImage: profileImage,
+                            child: _isUploadingPhoto
+                                ? CircularProgressIndicator(
+                                    color: _primaryColor,
+                                    strokeWidth: 2.5,
+                                  )
+                                : (profileImage == null
+                                    ? const Text('👨🏻', style: TextStyle(fontSize: 40))
+                                    : null),
                           ),
-                        ),
+                          Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: _primaryColor,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                            child: const Icon(Icons.camera_alt, size: 12, color: Colors.white),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            displayName,
+                            style: const TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            userLocation,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const EditProfilePage()),
+                              );
+                            },
+                            child: Text(
+                              AppLang.t('edit_profile'),
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: _primaryColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           ),
           const SizedBox(height: 16),
 
@@ -313,20 +584,28 @@ class _ProfilePageState extends State<ProfilePage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Made for you',
-                      style: TextStyle(
+                    Text(
+                      AppLang.t('made_for_you'),
+                      style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
                         color: Colors.black87,
                       ),
                     ),
-                    Icon(Icons.edit_outlined, color: _primaryColor, size: 20),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const PreferencesPage()),
+                        );
+                      },
+                      child: Icon(Icons.edit_outlined, color: _primaryColor, size: 20),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  'Health condition',
+                  AppLang.t('health_condition'),
                   style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                 ),
                 const SizedBox(height: 8),
@@ -342,7 +621,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Profession',
+                      AppLang.t('profession'),
                       style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
                     ),
                     const Text(
@@ -365,84 +644,165 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const SizedBox(height: 22),
 
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Saved recipes',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              GestureDetector(
-                onTap: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const SavedPage()));
-                },
-                child: Text(
-                  'View all · 12',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: _primaryColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .collection('saved_recipes')
+                .orderBy('savedAt', descending: true)
+                .snapshots(),
+            builder: (context, savedSnapshot) {
+              final docs = savedSnapshot.data?.docs ?? [];
+              final int savedCount = docs.length;
 
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?w=300',
-                    width: 75,
-                    height: 75,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'Sylheti lemon chicken',
-                        style: TextStyle(
-                          fontSize: 15,
+                      Text(
+                        AppLang.t('saved_recipes'),
+                        style: const TextStyle(
+                          fontSize: 17,
                           fontWeight: FontWeight.bold,
                           color: Colors.black87,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '30 min · Sylhet',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey.shade600,
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const SavedPage()),
+                          );
+                        },
+                        child: Text(
+                          '${AppLang.t('view_all')} · $savedCount',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _primaryColor,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
-            ),
+                  const SizedBox(height: 12),
+                  if (docs.isEmpty)
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const ExplorePage()),
+                        );
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.03),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          'No saved recipes yet. Tap to explore recipes.',
+                          style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                        ),
+                      ),
+                    )
+                  else
+                    Builder(
+                      builder: (context) {
+                        final data = docs.first.data() as Map<String, dynamic>;
+                        final String title = data['title'] ?? 'Saved Recipe';
+                        final String time = data['time'] ?? '30 min';
+                        final String region = data['region'] ?? 'Bangladesh';
+                        final String imageUrl = data['imageUrl'] ?? '';
+
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const SavedPage()),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.03),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: imageUrl.isNotEmpty
+                                      ? Image.network(
+                                          imageUrl,
+                                          width: 75,
+                                          height: 75,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => Container(
+                                            width: 75,
+                                            height: 75,
+                                            color: const Color(0xFFF3EAEB),
+                                            child: Icon(Icons.restaurant, color: _primaryColor),
+                                          ),
+                                        )
+                                      : Container(
+                                          width: 75,
+                                          height: 75,
+                                          color: const Color(0xFFF3EAEB),
+                                          child: Icon(Icons.restaurant, color: _primaryColor),
+                                        ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        title,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '$time · $region',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey.shade400),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 20),
 
@@ -460,8 +820,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             child: Column(
               children: [
-                // Admin access only
-                if (FirebaseAuth.instance.currentUser?.email == 'admin1@gmail.com') ...[
+                if (user.email == 'admin1@gmail.com') ...[
                   _buildOptionTile(
                     icon: Icons.admin_panel_settings_outlined,
                     title: 'Admin Dashboard',
@@ -476,11 +835,10 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   Divider(height: 1, color: Colors.grey.shade100),
                 ],
-                
-                // Add Recipe Option for everyone
+
                 _buildOptionTile(
                   icon: Icons.add_circle_outline,
-                  title: 'Submit a Recipe',
+                  title: AppLang.t('submit_recipe'),
                   trailingText: '',
                   iconColor: _primaryColor,
                   onTap: () {
@@ -492,39 +850,56 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 Divider(height: 1, color: Colors.grey.shade100),
 
-                _buildOptionTile(
-                  icon: Icons.notifications_none,
-                  title: 'Notifications',
-                  trailingText: 'On',
-                  iconColor: _primaryColor,
-                  onTap: () {},
+                StreamBuilder<DocumentSnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(user.uid)
+                      .snapshots(),
+                  builder: (context, snap) {
+                    final data = snap.data?.data() as Map<String, dynamic>?;
+                    final bool isNotifOn = data?['notificationsEnabled'] ?? true;
+
+                    return _buildOptionTile(
+                      icon: isNotifOn
+                          ? Icons.notifications_none
+                          : Icons.notifications_off_outlined,
+                      title: AppLang.t('notifications'),
+                      trailingText: isNotifOn ? 'On' : 'Off',
+                      iconColor: _primaryColor,
+                      onTap: () => _showNotificationSheet(user, isNotifOn),
+                    );
+                  },
                 ),
                 Divider(height: 1, color: Colors.grey.shade100),
                 _buildOptionTile(
                   icon: Icons.translate,
-                  title: 'Language',
-                  trailingText: 'English',
+                  title: AppLang.t('language'),
+                  trailingText: AppLang.current.value,
                   iconColor: _primaryColor,
-                  onTap: () {},
+                  onTap: () => _showLanguageSheet(user),
                 ),
                 Divider(height: 1, color: Colors.grey.shade100),
                 _buildOptionTile(
                   icon: Icons.help_outline,
-                  title: 'Help & support',
+                  title: AppLang.t('help_support'),
                   trailingText: '',
                   iconColor: _primaryColor,
-                  onTap: () {},
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const HelpSupportPage()),
+                    );
+                  },
                 ),
                 Divider(height: 1, color: Colors.grey.shade100),
                 _buildOptionTile(
                   icon: Icons.logout,
-                  title: 'Log out',
+                  title: AppLang.t('log_out'),
                   trailingText: '',
                   iconColor: Colors.grey.shade600,
                   onTap: () async {
                     await FirebaseAuth.instance.signOut();
                     if (mounted) {
-                      setState(() {});
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Logged out successfully!')),
                       );

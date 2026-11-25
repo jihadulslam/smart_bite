@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'signup_page.dart';
 import 'admin_dashboard.dart';
+import 'home_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -34,18 +35,25 @@ class _LoginPageState extends State<LoginPage> {
 
       if (mounted) {
         if (email.toLowerCase() == 'admin1@gmail.com') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Welcome to Admin Dashboard!')),
+          );
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const AdminDashboard()),
           );
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Welcome to Admin Dashboard!')),
-          );
         } else {
-          Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Login Successful!')),
           );
+          if (Navigator.canPop(context)) {
+            Navigator.pop(context); // Profile থেকে এসে থাকলে আবার Profile-এ ফিরে যাবে
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const HomePage()), // home_page.dart ইম্পোর্ট থাকতে হবে
+            );
+          }
         }
       }
     } on FirebaseAuthException catch (e) {
