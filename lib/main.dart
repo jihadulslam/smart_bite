@@ -1,10 +1,12 @@
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'welcome_page.dart';
+import 'meal_plan_page.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -18,13 +20,14 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SmartBite',
       debugShowCheckedModeBanner: false,
+      title: 'Smart Bite',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        primaryColor: const Color(0xFF7A232E),
+        scaffoldBackgroundColor: const Color(0xFFFAF9F9),
         useMaterial3: true,
       ),
-      home: const WelcomePage(),
+      home: const MealPlanPage(),
     );
   }
 }
